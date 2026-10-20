@@ -3,7 +3,8 @@
 A two-player, same-device Rock-Paper-Scissors game built with plain HTML, CSS, and JavaScript.
 
 ## How to play
-1. Open `index.html` in a browser, enter both names, click **Start Game** (or press Enter).
+1. Open `index.html` in a browser. Choose **2 Players** or **vs Computer**, choose speed **Normal ×1** or **Fast ×2**, enter your name(s), click **Start Game** (or press Enter).
+   - The computer opponent counters your favorite hand most of the time, so mix it up!
 2. Player 1 picks secretly, then Player 2 picks (click a hand, or press **R / P / S**).
 3. The game counts down "Rock... Paper... Scissors... SHOOT!" and reveals both hands.
 4. Rock beats Scissors, Scissors beats Paper, Paper beats Rock. Same pick = tie.
@@ -12,7 +13,7 @@ A two-player, same-device Rock-Paper-Scissors game built with plain HTML, CSS, a
 ## Features
 - Screens that change as you play: setup, pick, countdown, reveal, final result
 - Effects: lock-in glow + ripple on your choice, shaking fists, hands slamming in, color flash, confetti, sound beeps
-- Score pips, round history, light/dark mode, sound on/off, keyboard shortcuts, responsive layout
+- Score pips, round history, neon cyberpunk look with a cyan/pink color switch, sound on/off, keyboard shortcuts, responsive layout
 
 ## Database (Supabase)
 Finished matches are saved to an online Supabase database. The **Leaderboard** screen reads them back
