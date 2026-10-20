@@ -31,6 +31,8 @@ let lastRound = null;
 let busy = false;            // blocks double-clicks while an effect is playing
 let soundOn = true;
 let saveStatus = "";         // message about saving the result (shown on the final screen)
+let mode = "pvp";            // "pvp" = 2 players, "ai" = player vs computer
+let speed = 1;               // 1 = normal, 2 = x2 faster (countdown + effects)
 
 /* ---------- DATABASE (Supabase) ----------
    The keys come from config.js. If they are not filled in, the game still
@@ -114,7 +116,7 @@ function buildMatchList(matches) {
 }
 
 /* ---------- SMALL HELPERS ---------- */
-function sleep(ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); }
+function sleep(ms) { return new Promise(function (resolve) { setTimeout(resolve, ms / speed); }); }   // x2 speed = half the waiting time
 
 function escapeHtml(text) {
   return text.replace(/[&<>"']/g, function (c) {
@@ -176,8 +178,8 @@ try {
 } catch (e) { /* storage blocked: use system theme */ }
 
 function toggleTheme() {
-  const isDark = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim() === "#14161f";
-  const next = isDark ? "light" : "dark";
+  const isPink = document.documentElement.getAttribute("data-theme") === "light";   // "light" = hot-pink palette
+  const next = isPink ? "dark" : "light";                                           // "dark" = cyan palette
   document.documentElement.setAttribute("data-theme", next);
   try { localStorage.setItem("rps_theme", next); } catch (e) { /* ignore */ }
 }
@@ -196,9 +198,37 @@ function getRoundResult(a, b) {
   return "playerB";
 }
 
+// AI opponent: mostly counters the player's favorite hand, sometimes plays randomly
+function getComputerChoice() {
+  const randomPick = choices[Math.floor(Math.random() * choices.length)];
+  if (history.length === 0 || Math.random() < 0.3) return randomPick;      // 30% random so it is beatable
+  const counts = history.reduce(function (total, r) {                      // HIGHER-ORDER FUNCTION (reduce)
+    total[r.a] = (total[r.a] || 0) + 1;                                    // how often the player chose each hand
+    return total;
+  }, { rock: 0, paper: 0, scissors: 0 });
+  const favorite = choices.reduce(function (best, c) { return counts[c] > counts[best] ? c : best; }, choices[0]);
+  return choices.find(function (c) { return rules[c] === favorite; });     // the hand that beats the favorite
+}
+
+// setup screen toggles (mode and speed)
+function setMode(m) { mode = m; syncSetup(); }
+function setSpeed(x) {
+  speed = x;
+  document.documentElement.style.setProperty("--speed", x);                // CSS animations use this too
+  syncSetup();
+}
+function syncSetup() {
+  document.querySelectorAll("[data-mode]").forEach(function (b) { b.classList.toggle("on", b.dataset.mode === mode); });
+  document.querySelectorAll("[data-speed]").forEach(function (b) { b.classList.toggle("on", Number(b.dataset.speed) === speed); });
+  const p1 = document.getElementById("p1name");
+  const p2 = document.getElementById("p2name");
+  if (p1) p1.placeholder = mode === "ai" ? "Your name" : "Player 1 name";
+  if (p2) p2.style.display = mode === "ai" ? "none" : "";
+}
+
 function startGame() {
-  const n1 = document.getElementById("p1name").value.trim() || "Player 1";
-  const n2 = document.getElementById("p2name").value.trim() || "Player 2";
+  const n1 = document.getElementById("p1name").value.trim() || (mode === "ai" ? "You" : "Player 1");
+  const n2 = mode === "ai" ? "🤖 Computer" : (document.getElementById("p2name").value.trim() || "Player 2");
   newMatch(n1, n2);
 }
 
@@ -223,9 +253,13 @@ async function pick(choice) {
   await sleep(550);
   if (turn === "A") {
     pendingChoiceA = choice;
-    turn = "B";
-    busy = false;
-    render();
+    if (mode === "ai") {
+      await playRound(getComputerChoice());                              // computer picks instantly, then countdown
+    } else {
+      turn = "B";
+      busy = false;
+      render();
+    }
   } else {
     await playRound(choice);
   }
@@ -280,7 +314,7 @@ function nextRound() {
 function controls() {
   return `<div class="controls">
     <button onclick="toggleSound()" title="Sound on/off">${soundOn ? "🔊" : "🔇"}</button>
-    <button onclick="toggleTheme()" title="Light/dark">🌓</button></div>`;
+    <button onclick="toggleTheme()" title="Switch neon colors">🌓</button></div>`;
 }
 
 function renderScoreboard() {
@@ -319,21 +353,34 @@ function render() {
   if (phase === "setup") {
     app.innerHTML = `${controls()}
       <div class="trophy">✊ ✋ ✌️</div><h1>Rock · Paper · Scissors</h1>
-      <div class="sub">2 players · first to ${WIN_TARGET} round wins takes the match</div>
+      <div class="sub">First to ${WIN_TARGET} round wins takes the match</div>
+      <div class="seg-label">Game mode</div>
+      <div class="seg">
+        <button class="seg-btn" data-mode="pvp" onclick="setMode('pvp')">👥 2 Players</button>
+        <button class="seg-btn" data-mode="ai" onclick="setMode('ai')">🤖 vs Computer</button>
+      </div>
+      <div class="seg-label">Speed</div>
+      <div class="seg">
+        <button class="seg-btn" data-speed="1" onclick="setSpeed(1)">Normal ×1</button>
+        <button class="seg-btn" data-speed="2" onclick="setSpeed(2)">⚡ Fast ×2</button>
+      </div>
       <input id="p1name" placeholder="Player 1 name" maxlength="14" autofocus>
       <input id="p2name" placeholder="Player 2 name" maxlength="14">
       <button class="wide" onclick="startGame()">Start Game</button>
       <div class="actions"><button class="ghost" onclick="showLeaderboard()">🏆 Leaderboard</button></div>
       <div class="hint">Rock beats Scissors · Scissors beats Paper · Paper beats Rock</div>`;
+    syncSetup();
     return;
   }
 
   if (phase === "pick") {
     const me = turn === "A" ? playerA : playerB;
     const other = turn === "A" ? playerB : playerA;
-    const note = turn === "A"
-      ? `Pick secretly — don't let ${escapeHtml(other.name)} see!`
-      : `🔒 ${escapeHtml(playerA.name)} has locked in. Your turn!`;
+    const note = mode === "ai"
+      ? "The computer learns your favorite hand — mix it up!"
+      : (turn === "A"
+        ? `Pick secretly — don't let ${escapeHtml(other.name)} see!`
+        : `🔒 ${escapeHtml(playerA.name)} has locked in. Your turn!`);
     app.innerHTML = `${controls()}<h1>Round ${history.length + 1}</h1>${renderScoreboard()}
       <div class="turn-banner">${escapeHtml(me.name)}, choose your move</div>
       <div class="hint">${note}</div>
